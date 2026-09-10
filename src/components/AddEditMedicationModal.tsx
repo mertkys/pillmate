@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Plus, Check } from 'lucide-react';
-import type { Medication, FoodStatus, DayPeriod } from '../types/medication';
+import { X, Trash2, Plus, Check, Clock } from 'lucide-react';
+import type { Medication, FoodStatus, DayPeriod, MedicationDose } from '../types/medication';
 
 interface AddEditMedicationModalProps {
   isOpen: boolean;
@@ -19,8 +19,6 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('1 Tablet');
-  const [time, setTime] = useState('09:00');
-  const [period, setPeriod] = useState<DayPeriod>('morning');
   const [foodStatus, setFoodStatus] = useState<FoodStatus>('after_food');
   const [totalStock, setTotalStock] = useState(30);
   const [remainingStock, setRemainingStock] = useState(30);
@@ -28,44 +26,78 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
   const [color, setColor] = useState<'rose' | 'violet' | 'amber' | 'emerald' | 'sky'>('rose');
   const [icon, setIcon] = useState<'pill' | 'capsule' | 'droplet' | 'sparkles'>('pill');
 
+  // Multiple Doses State (Sabah & Akşam vb.)
+  const [doses, setDoses] = useState<MedicationDose[]>([
+    { id: 'd-1', time: '09:00', period: 'morning', label: 'Sabah Dozu' },
+  ]);
+
   useEffect(() => {
     if (medication) {
       setName(medication.name);
       setDosage(medication.dosage);
-      setTime(medication.time);
-      setPeriod(medication.period);
       setFoodStatus(medication.foodStatus);
       setTotalStock(medication.totalStock);
       setRemainingStock(medication.remainingStock);
       setNotes(medication.notes || '');
       setColor(medication.color);
       setIcon(medication.icon);
+      if (medication.doses && medication.doses.length > 0) {
+        setDoses(medication.doses);
+      } else {
+        setDoses([{ id: 'd-1', time: medication.time || '09:00', period: medication.period || 'morning', label: 'Doz 1' }]);
+      }
     } else {
       setName('');
       setDosage('1 Tablet');
-      setTime('09:00');
-      setPeriod('morning');
       setFoodStatus('after_food');
       setTotalStock(30);
       setRemainingStock(30);
       setNotes('');
       setColor('rose');
       setIcon('pill');
+      setDoses([{ id: 'd-1', time: '09:00', period: 'morning', label: 'Sabah' }]);
     }
   }, [medication, isOpen]);
 
   if (!isOpen) return null;
 
+  // Add another dose slot
+  const handleAddDose = (periodPreset: DayPeriod = 'evening', timePreset: string = '21:00', labelPreset: string = 'Akşam') => {
+    setDoses((prev) => [
+      ...prev,
+      {
+        id: `d-${Date.now()}-${prev.length + 1}`,
+        time: timePreset,
+        period: periodPreset,
+        label: labelPreset,
+      },
+    ]);
+  };
+
+  const handleRemoveDose = (index: number) => {
+    if (doses.length <= 1) return;
+    setDoses((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDoseChange = (index: number, field: keyof MedicationDose, value: string) => {
+    setDoses((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || doses.length === 0) return;
 
     onSave(
       {
         name: name.trim(),
         dosage: dosage.trim(),
-        time,
-        period,
+        time: doses[0].time,
+        period: doses[0].period,
+        doses,
         foodStatus,
         totalStock: Number(totalStock),
         remainingStock: Number(remainingStock),
@@ -80,7 +112,7 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl border border-rose-100 max-h-[92vh] flex flex-col">
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-stone-100">
@@ -89,7 +121,7 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            className="p-2 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -105,14 +137,14 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
             <input
               type="text"
               required
-              placeholder="Örn: Demir İlacı, D Vitamini, Alerji Hapı"
+              placeholder="Örn: Demir İlacı, Tansiyon İlacı, Vitamin D"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-2.5 rounded-2xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-rose-400 text-sm"
             />
           </div>
 
-          {/* Dosage & Time (Row) */}
+          {/* Dosage & Food Status */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -123,83 +155,120 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
                 placeholder="Örn: 1 Tablet, 5 Damla"
                 value={dosage}
                 onChange={(e) => setDosage(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-2xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-rose-400 text-sm"
+                className="w-full px-3 py-2.5 rounded-2xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-rose-400 text-sm"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                İçilme Saati *
+                Yemek İlişkisi
               </label>
-              <input
-                type="time"
-                required
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-2xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-rose-400 text-sm"
-              />
+              <select
+                value={foodStatus}
+                onChange={(e) => setFoodStatus(e.target.value as FoodStatus)}
+                className="w-full px-3 py-2.5 rounded-2xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-rose-400 text-xs bg-white"
+              >
+                <option value="after_food">Tok Karnına 🥣</option>
+                <option value="before_food">Aç Karnına ⏳</option>
+                <option value="with_food">Yemekle Birlikte 🥗</option>
+                <option value="independent">Fark Etmez 💧</option>
+              </select>
             </div>
           </div>
 
-          {/* Day Period */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1.5">
-              Günün Hangi Vakti?
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { id: 'morning', label: 'Sabah ☀️' },
-                { id: 'noon', label: 'Öğle 🌤️' },
-                { id: 'evening', label: 'Akşam 🌅' },
-                { id: 'night', label: 'Gece 🌙' },
-              ].map((p) => (
-                <button
-                  type="button"
-                  key={p.id}
-                  onClick={() => setPeriod(p.id as DayPeriod)}
-                  className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
-                    period === p.id
-                      ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
-                      : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                  }`}
+          {/* MULTI-DOSE TIME PICKER (Sabah + Akşam) */}
+          <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200/70 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-rose-700 uppercase tracking-wider block">
+                  İçilme Vakitleri & Doz Saatleri
+                </span>
+                <span className="text-[10px] text-stone-500">
+                  Günde 1, 2 veya daha fazla saat ekleyebilirsin
+                </span>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex items-center gap-1">
+                {doses.length === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleAddDose('night', '21:00', 'Akşam')}
+                    className="text-[10px] font-bold bg-white text-rose-600 border border-rose-200 px-2 py-1 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    + Akşam Ekle
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* List of Doses */}
+            <div className="space-y-2">
+              {doses.map((dose, idx) => (
+                <div
+                  key={dose.id || idx}
+                  className="p-2.5 rounded-xl bg-white border border-rose-100 flex items-center gap-2 shadow-2xs"
                 >
-                  {p.label}
-                </button>
+                  <Clock className="w-4 h-4 text-rose-500 shrink-0" />
+
+                  {/* Dose Label (Sabah / Akşam) */}
+                  <input
+                    type="text"
+                    value={dose.label || ''}
+                    onChange={(e) => handleDoseChange(idx, 'label', e.target.value)}
+                    placeholder="Örn: Sabah"
+                    className="w-20 px-2 py-1 text-xs rounded-lg border border-stone-200 font-semibold"
+                  />
+
+                  {/* Time picker */}
+                  <input
+                    type="time"
+                    required
+                    value={dose.time}
+                    onChange={(e) => handleDoseChange(idx, 'time', e.target.value)}
+                    className="w-24 px-2 py-1 text-xs rounded-lg border border-stone-200 font-bold"
+                  />
+
+                  {/* Period selector */}
+                  <select
+                    value={dose.period}
+                    onChange={(e) => handleDoseChange(idx, 'period', e.target.value as DayPeriod)}
+                    className="flex-1 px-2 py-1 text-xs rounded-lg border border-stone-200 bg-white"
+                  >
+                    <option value="morning">Sabah ☀️</option>
+                    <option value="noon">Öğle 🌤️</option>
+                    <option value="evening">Akşam 🌅</option>
+                    <option value="night">Gece 🌙</option>
+                  </select>
+
+                  {/* Remove button (if more than 1 dose) */}
+                  {doses.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveDose(idx)}
+                      className="p-1 rounded-lg text-stone-300 hover:text-rose-500 transition-colors"
+                      title="Bu dozu kaldır"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
+
+            {/* Button to add custom extra dose */}
+            <button
+              type="button"
+              onClick={() => handleAddDose('evening', '19:00', `Doz ${doses.length + 1}`)}
+              className="w-full py-2 rounded-xl bg-white/80 hover:bg-white border border-dashed border-rose-300 text-rose-600 text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Yeni Saat / Doz Ekle</span>
+            </button>
           </div>
 
-          {/* Food Status */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1.5">
-              Yemek Durumu
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: 'after_food', label: 'Tok Karnına 🥣' },
-                { id: 'before_food', label: 'Aç Karnına ⏳' },
-                { id: 'with_food', label: 'Yemekle Beraber 🥗' },
-                { id: 'independent', label: 'Fark Etmez 💧' },
-              ].map((f) => (
-                <button
-                  type="button"
-                  key={f.id}
-                  onClick={() => setFoodStatus(f.id as FoodStatus)}
-                  className={`py-2.5 px-3 text-xs font-bold rounded-xl border transition-all text-left flex items-center justify-between ${
-                    foodStatus === f.id
-                      ? 'bg-pink-50 border-rose-300 text-rose-700'
-                      : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                  }`}
-                >
-                  <span>{f.label}</span>
-                  {foodStatus === f.id && <Check className="w-3.5 h-3.5 text-rose-500" />}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Stock / Blister Info */}
-          <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200/60 space-y-3">
+          {/* Stock / Blister Tracking */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200/60 space-y-2">
             <span className="block text-xs font-bold text-amber-800 uppercase tracking-wider">
               Kutu / Blister Takibi (Acaba İçtim mi Koruması)
             </span>
@@ -220,7 +289,7 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-semibold text-stone-600 mb-1">
-                  Şu Anda Kalan Tablet
+                  Kutuda Kalan Tablet
                 </label>
                 <input
                   type="number"
@@ -259,7 +328,7 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
                     onClose();
                   }
                 }}
-                className="p-3 rounded-2xl bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-600 transition-colors"
+                className="p-3 rounded-2xl bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer"
                 title="İlacı Sil"
               >
                 <Trash2 className="w-4 h-4" />
@@ -269,16 +338,16 @@ export const AddEditMedicationModal: React.FC<AddEditMedicationModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs transition-colors"
+              className="flex-1 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs transition-colors cursor-pointer"
             >
               Vazgeç
             </button>
 
             <button
               type="submit"
-              className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 text-white font-bold text-xs shadow-md shadow-pink-200 transition-all flex items-center justify-center gap-1.5"
+              className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 text-white font-bold text-xs shadow-md shadow-pink-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
+              <Check className="w-4 h-4" />
               <span>{medication ? 'Güncelle' : 'Kaydet'}</span>
             </button>
           </div>
